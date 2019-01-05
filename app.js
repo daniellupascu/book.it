@@ -12,6 +12,12 @@ let app = express()
 
 app.use(bodyParser.json())
 
+// fix for the issue https://github.com/apollographql/apollo-server/issues/1633
+mongoose.Types.ObjectId.prototype.valueOf = function () {
+	return this.toString();
+};
+
+
 app.use('/graphql', graphqlHttp({
     schema: buildSchema(`
         type Event {
@@ -65,24 +71,30 @@ app.use('/graphql', graphqlHttp({
             }) 
         },
         createEvent: args => {
-            // const event = {
-            //     _id: Math.random().toString(),
-            //     title: args.eventInput.title,
-            //     description: args.eventInput.description,
-            //     price: +args.eventInput.price,
-            //     date: args.eventInput.date,
-            // }
-            // events.push(event)
-            // return event
-
             const event = new Event({
                 title: args.eventInput.title,
                 description: args.eventInput.description,
                 price: +args.eventInput.price,
                 date: new Date(args.eventInput.date),
+                creator: '5c311dec68c8fb50876d7e79',
             })
 
-            return event.save().then(result => ({...result._doc, _id: event.id})).catch(e => {
+            let createdEvent;
+            
+            return event.save()
+            .then(result => {
+                createdEvent = result
+                return User.findById('5c311dec68c8fb50876d7e79')
+            })
+            .then(user => {
+                if(!user) throw new Error('User does not exists')
+                user.createdEvents.push(event)
+                return user.save()
+            })
+            .then(result => {
+                return createdEvent
+            })
+            .catch(e => {
                 console.log(e)
                 throw e
             })
